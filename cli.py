@@ -1764,6 +1764,24 @@ def run_cli(argv: Sequence[str] | None = None) -> int:
             print(json.dumps({"task_id": task_id, "result": result}, ensure_ascii=False))
         return 1
 
+    # Final video generated successfully: report it to the optional metrics
+    # webhook. Reporting is secondary (it never raises and never delays
+    # generation); we only signal .mp4 files that were actually written. Earlier
+    # stages (script/terms/audio/...) return a result without "videos".
+    from app.services import metrics
+
+    for video_path in result.get("videos") or []:
+        ref = metrics.video_ref(task_id, video_path)
+        if os.path.isfile(video_path):
+            metrics.report_video_generated(metrics.DEFAULT_TARGET, ref)
+        else:
+            # task.py already reported success; a missing file here is an anomaly
+            # and must not vanish without a trail.
+            logger.warning(
+                f"metrics video_gerado skipped: final mp4 missing on disk "
+                f"(task_id={task_id} ref={ref})"
+            )
+
     print(json.dumps({"task_id": task_id, "result": result}, ensure_ascii=False))
     return 0
 
